@@ -1,3 +1,11 @@
+terraform {
+  backend "s3" {
+    bucket = "pantry-to-plate-tfstate-89313" # Use the exact name you just created
+    key    = "prod/terraform.tfstate"        # The file path inside the bucket
+    region = "us-east-1"
+  }
+}
+
 # IAM Role for Lambda
 resource "aws_iam_role" "lambda_exec_role" {
   name = "pantry_to_plate_lambda_role"
