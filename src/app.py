@@ -3,28 +3,31 @@ import urllib.request
 import urllib.error
 import os
 import logging
+import time
 
 # 1. Initialize the professional logger
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 def lambda_handler(event, context):
-    logger.info("========== NEW INVOCATION ==========")
+    # Extract the unique AWS Request ID for tracing
+    request_id = context.aws_request_id
+    
+    logger.info(f"[{request_id}] ========== NEW INVOCATION ==========")
     
     # 2. Parse and Log the incoming ingredients
     try:
         body = json.loads(event.get("body", "{}"))
         ingredients = body.get("ingredients", [])
         
-        # Log exactly what the user typed before we do anything else
-        logger.info(f"USER INPUT INGREDIENTS: {ingredients}")
+        logger.info(f"[{request_id}] USER INPUT INGREDIENTS: {ingredients}")
         
         if not ingredients:
-            logger.warning("User submitted an empty ingredient list.")
+            logger.warning(f"[{request_id}] User submitted an empty ingredient list.")
             return {"statusCode": 400, "body": json.dumps({"error": "No ingredients provided."})}
             
     except Exception as e:
-        logger.error(f"Failed to parse input JSON payload: {str(e)}")
+        logger.error(f"[{request_id}] Failed to parse input JSON payload: {str(e)}")
         return {"statusCode": 400, "body": json.dumps({"error": "Invalid input format."})}
 
     # 3. AI Guardrails (System Instructions)
@@ -55,15 +58,23 @@ def lambda_handler(event, context):
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
 
     # 4. Execute request and Log the AI's Output
+    logger.info(f"[{request_id}] Sending request to Gemini API...")
+    start_time = time.time()  # Start latency timer
+    
     try:
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode('utf-8'))
+            end_time = time.time()  # End latency timer
+            
+            latency = end_time - start_time
+            logger.info(f"[{request_id}] Gemini API responded in {latency:.2f} seconds.")
+            
             recipe_text = result['candidates'][0]['content']['parts'][0]['text']
             
             # Catch the AI triggering a guardrail
             if recipe_text.startswith("CHEF_ERROR:"):
                 clean_error_message = recipe_text.replace("CHEF_ERROR:", "").strip()
-                logger.warning(f"AI REJECTED INPUT. Chef Response: {clean_error_message}")
+                logger.warning(f"[{request_id}] AI REJECTED INPUT. Chef Response: {clean_error_message}")
                 
                 return {
                     "statusCode": 400,
@@ -72,7 +83,7 @@ def lambda_handler(event, context):
                 }
             
             # Log successful recipe generation
-            logger.info(f"AI RECIPE GENERATED SUCCESSFULLY:\n{recipe_text}")
+            logger.info(f"[{request_id}] AI RECIPE GENERATED SUCCESSFULLY:\n{recipe_text}")
             
             return {
                 "statusCode": 200,
@@ -81,8 +92,10 @@ def lambda_handler(event, context):
             }
             
     except urllib.error.HTTPError as e:
+        end_time = time.time()
+        latency = end_time - start_time
         error_details = e.read().decode('utf-8')
-        logger.error(f"GEMINI API HTTP ERROR: {e.code} - {error_details}")
+        logger.error(f"[{request_id}] GEMINI API HTTP ERROR ({latency:.2f}s): {e.code} - {error_details}")
         return {
             "statusCode": e.code,
             "body": json.dumps({
@@ -91,7 +104,9 @@ def lambda_handler(event, context):
             })
         }
     except Exception as e:
-        logger.error(f"UNEXPECTED SYSTEM ERROR: {str(e)}")
+        end_time = time.time()
+        latency = end_time - start_time
+        logger.error(f"[{request_id}] UNEXPECTED SYSTEM ERROR ({latency:.2f}s): {str(e)}")
         return {
             "statusCode": 500,
             "body": json.dumps({"error": "An unexpected internal server error occurred."})
