@@ -22,10 +22,19 @@ generateBtn.addEventListener('click', async () => {
         });
 
         const data = await response.json();
-        // Convert Markdown-style text from AI to simple HTML line breaks
+
+        // NEW: If the backend throws a 400 or 500 error, display it gracefully!
+        if (!response.ok) {
+            recipeOutput.innerHTML = `<span style="color: #ef4444; font-weight: bold;">Oops!</span> ${data.error}`;
+            return;
+        }
+
+        // If successful, display the recipe
         recipeOutput.innerHTML = data.recipe.replace(/\n/g, '<br>');
+        
     } catch (error) {
-        recipeOutput.innerHTML = "Error: Could not reach the chef.";
+        // This only triggers if the internet goes down or the URL is completely broken
+        recipeOutput.innerHTML = "Error: Could not connect to the server.";
     } finally {
         loading.classList.add('hidden');
     }
