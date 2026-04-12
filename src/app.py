@@ -4,56 +4,31 @@ import urllib.error
 import os
 import logging
 import time
+from system_prompt import CHEF_SYSTEM_PROMPT
 
-# 1. Initialize the professional logger
+# Initialize the professional logger
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-def lambda_handler(event, context):
-    # Extract the unique AWS Request ID for tracing
-    request_id = context.aws_request_id
-    
-    logger.info(f"[{request_id}] ========== NEW INVOCATION ==========")
-    
-    # 2. Parse and Log the incoming ingredients
-    try:
-        body = json.loads(event.get("body", "{}"))
-        ingredients = body.get("ingredients", [])
-        
-        logger.info(f"[{request_id}] USER INPUT INGREDIENTS: {ingredients}")
-        
-        if not ingredients:
-            logger.warning(f"[{request_id}] User submitted an empty ingredient list.")
-            return {"statusCode": 400, "body": json.dumps({"error": "No ingredients provided."})}
-            
-    except Exception as e:
-        logger.error(f"[{request_id}] Failed to parse input JSON payload: {str(e)}")
-        return {"statusCode": 400, "body": json.dumps({"error": "Invalid input format."})}
 
-    # 3. AI Guardrails (System Instructions)
-    system_instruction = """
-    You are a professional chef. Create a cohesive, delicious recipe using ONLY the ingredients provided by the user. 
-    
-    Structure your response EXACTLY in this order using Markdown:
-    1. **[Recipe Title]**: Use a catchy name as a standalone bold heading line. Do NOT include the words "Recipe Title" or a number before it.
-    2. **Summary**: A 1-2 sentence description of the dish and estimated total time.
-    3. **Ingredients**: A bulleted list with specific measurements.
-    4. **Preparation Steps**: A bulleted list of "Mise en Place" tasks (e.g., chopping, mincing, marinating, preheating) that happen BEFORE the heat is turned on.
-    5. **Cooking Instructions**: A numbered list of the actual cooking process.
-    
-    CRITICAL GUARDRAIL RULES:
-    1. If the user provides items that are not edible food, politely refuse in 1-2 sentences.
-    2. If the user asks questions unrelated to cooking, politely refuse in 1-2 sentences.
-    3. If you refuse, your ENTIRE response MUST begin with "CHEF_ERROR:" followed by the explanation.
-    """
+def create_api_response(status_code, body_content):
+    """Standardizes the return payload for AWS API Gateway."""
+    return {
+        "statusCode": status_code,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.dumps(body_content)
+    }
+
+
+def fetch_recipe_from_gemini(ingredients, request_id):
+    """Handles the external network request, payload construction, and latency tracking."""
     user_prompt = f"Here are my ingredients: {', '.join(ingredients)}"
-
     api_key = os.environ.get("GEMINI_API_KEY") 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={api_key}"
     
     payload = {
         "system_instruction": {
-            "parts": [{"text": system_instruction}]
+            "parts": [{"text": CHEF_SYSTEM_PROMPT}]
         },
         "contents": [{
             "parts": [{"text": user_prompt}]
@@ -63,57 +38,63 @@ def lambda_handler(event, context):
     data = json.dumps(payload).encode('utf-8')
     req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
 
-    # 4. Execute request and Log the AI's Output
     logger.info(f"[{request_id}] Sending request to Gemini API...")
-    start_time = time.time()  # Start latency timer
+    start_time = time.time()
     
     try:
         with urllib.request.urlopen(req) as response:
             result = json.loads(response.read().decode('utf-8'))
-            end_time = time.time()  # End latency timer
-            
-            latency = end_time - start_time
+            latency = time.time() - start_time
             logger.info(f"[{request_id}] Gemini API responded in {latency:.2f} seconds.")
             
-            recipe_text = result['candidates'][0]['content']['parts'][0]['text']
-            
-            # Catch the AI triggering a guardrail
-            if recipe_text.startswith("CHEF_ERROR:"):
-                clean_error_message = recipe_text.replace("CHEF_ERROR:", "").strip()
-                logger.warning(f"[{request_id}] AI REJECTED INPUT. Chef Response: {clean_error_message}")
-                
-                return {
-                    "statusCode": 400,
-                    "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({"error": clean_error_message})
-                }
-            
-            # Log successful recipe generation
-            logger.info(f"[{request_id}] AI RECIPE GENERATED SUCCESSFULLY:\n{recipe_text}")
-            
-            return {
-                "statusCode": 200,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"recipe": recipe_text})
-            }
+            return result['candidates'][0]['content']['parts'][0]['text']
             
     except urllib.error.HTTPError as e:
-        end_time = time.time()
-        latency = end_time - start_time
+        latency = time.time() - start_time
         error_details = e.read().decode('utf-8')
         logger.error(f"[{request_id}] GEMINI API HTTP ERROR ({latency:.2f}s): {e.code} - {error_details}")
-        return {
-            "statusCode": e.code,
-            "body": json.dumps({
-                "error": "The Chef's brain is temporarily offline.", 
-                "details": "Check CloudWatch logs for the exact Google API error."
-            })
-        }
+        # Raise a custom exception to be caught by the handler
+        raise Exception(f"HTTP_{e.code}")
+
+
+def lambda_handler(event, context):
+    """Main coordinator function."""
+    request_id = context.aws_request_id
+    logger.info(f"[{request_id}] ========== NEW INVOCATION ==========")
+    
+    try:
+        body = json.loads(event.get("body", "{}"))
+        ingredients = body.get("ingredients", [])
+        
+        logger.info(f"[{request_id}] USER INPUT INGREDIENTS: {ingredients}")
+        
+        if not ingredients:
+            logger.warning(f"[{request_id}] User submitted an empty ingredient list.")
+            return create_api_response(400, {"error": "No ingredients provided."})
+            
     except Exception as e:
-        end_time = time.time()
-        latency = end_time - start_time
-        logger.error(f"[{request_id}] UNEXPECTED SYSTEM ERROR ({latency:.2f}s): {str(e)}")
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": "An unexpected internal server error occurred."})
-        }
+        logger.error(f"[{request_id}] Failed to parse input JSON payload: {str(e)}")
+        return create_api_response(400, {"error": "Invalid input format."})
+
+    try:
+        recipe_text = fetch_recipe_from_gemini(ingredients, request_id)
+        
+        # Guardrail check
+        if recipe_text.startswith("CHEF_ERROR:"):
+            clean_error_message = recipe_text.replace("CHEF_ERROR:", "").strip()
+            logger.warning(f"[{request_id}] AI REJECTED INPUT. Chef Response: {clean_error_message}")
+            return create_api_response(400, {"error": clean_error_message})
+        
+        logger.info(f"[{request_id}] AI RECIPE GENERATED SUCCESSFULLY.")
+        return create_api_response(200, {"recipe": recipe_text})
+        
+    except Exception as e:
+        error_msg = str(e)
+        # Catch our custom HTTP error from the helper function
+        if error_msg.startswith("HTTP_"):
+            error_code = int(error_msg.split("_")[1])
+            return create_api_response(error_code, {"error": "The Chef's brain is temporarily offline."})
+
+        # Catch all for unexpected systemic failures
+        logger.error(f"[{request_id}] UNEXPECTED SYSTEM ERROR: {error_msg}")
+        return create_api_response(500, {"error": "An unexpected internal server error occurred."})
