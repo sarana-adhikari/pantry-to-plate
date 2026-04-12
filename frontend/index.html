@@ -13,7 +13,11 @@
         <input type="text" id="ingredientsInput" placeholder="chicken, garlic, rice...">
         <button id="generateBtn">Generate Recipe</button>
         
-        <div id="loading" class="hidden">Chef is thinking... 👨‍🍳</div>
+        <div id="loading" class="hidden">
+            <div class="spinner">🍳</div>
+            <div id="thought-process">Waking up the chef...</div>
+        </div>
+        
         <div id="recipeOutput"></div>
     </div>
     <script src="script.js"></script>
