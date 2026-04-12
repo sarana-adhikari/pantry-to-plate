@@ -108,17 +108,11 @@ button:hover {
     margin-top: 1.5rem;
 }
 
-.spinner {
-    font-size: 3rem;
-    /* This makes the pan do a little flip/toss animation */
-    animation: tossPan 1.5s infinite ease-in-out;
+.loading-gif {
+    width: 125px;  /* Adjust this value to make the GIF larger or smaller */
+    height: auto;
     margin-bottom: 0.5rem;
-}
-
-@keyframes tossPan {
-    0% { transform: rotate(0deg) scale(1); }
-    50% { transform: rotate(15deg) scale(1.2) translateY(-10px); }
-    100% { transform: rotate(0deg) scale(1); }
+    border-radius: 8px; /* Optional: slightly rounds the corners of the GIF */
 }
 
 #thought-process {
