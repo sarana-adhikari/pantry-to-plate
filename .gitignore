@@ -18,3 +18,5 @@ Thumbs.db
 # AWS
 admin_accessKeys.csv
 .aws/
+
+notestoself
