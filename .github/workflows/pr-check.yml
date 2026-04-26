@@ -1,42 +1,46 @@
+---
 name: Pull Request Checks
-
 # Only run when a PR is opened against the main branch
-on:
+"on":
   pull_request:
-    branches:
-      - main
-
+    branches: [main]
 jobs:
-  validate-code:
+  code-quality:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
-
-      # 1. Lint the Python Code (Catches syntax errors before deployment)
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+      - name: Install yamllint
+        run: python -m pip install yamllint
+      - name: Lint YAML
+        run: yamllint .
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Run Unit Tests
+        run: python -m pytest src/test_app.py -v
       - name: Check Python Syntax
-        run: |
-          python -m py_compile src/app.py
+        run: python -m py_compile src/app.py
 
-      # 2. Terraform Plan (Shows what WILL happen without actually doing it)
+  infra-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-
       - name: Terraform Init
         working-directory: ./infra
         run: terraform init
-
       - name: Terraform Plan
         working-directory: ./infra
         env:
