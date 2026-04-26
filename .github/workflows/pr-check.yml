@@ -18,6 +18,10 @@ jobs:
         run: python -m pip install yamllint
       - name: Lint YAML
         run: yamllint .
+      - name: Install pytest
+        run: python -m pip install pytest
+      - name: Run Unit Tests
+        run: python -m pytest src/test_app.py -v
 
       # 1. Lint the Python Code (Catches syntax errors before deployment)
       - name: Check Python Syntax
