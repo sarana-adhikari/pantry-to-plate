@@ -19,7 +19,4 @@ Thumbs.db
 admin_accessKeys.csv
 .aws/
 
-#testing local files
-src/test_local.py 
-
 notestoself
