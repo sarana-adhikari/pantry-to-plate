@@ -27,12 +27,14 @@ jobs:
 
       # --- NEW: SUBTASK 3 TEST STEPS ---
     - name: Install Test Dependencies
+      working-directory: ./
       run: |
         python -m pip install --upgrade pip
         pip install pytest
         pip install -r requirements.txt
 
-      - name: Run Unit Tests
+    - name: Run Unit Tests
+      working-directory: ./
         run: |
           python -m pytest tests/
 
