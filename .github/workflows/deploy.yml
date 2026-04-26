@@ -1,39 +1,25 @@
 ---
-name: Pantry-to-Plate CI/CD Pipeline
-# This workflow runs when there is a push to main
-"on":
-  push:
-    branches: [main]
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
+name: Deploy to Production
 
-    # Run terminal commands inside the infra/ folder by default
+"on":
+  workflow_run:
+    workflows: ["Integration Tests"]
+    types:
+      - completed
+    branches: [main]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./infra
     steps:
-      # 1. Download your code from the repository onto the GitHub runner
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - name: Install pytest
-        run: python -m pip install pytest
-        working-directory: ./
-      - name: Run Unit Tests
-        run: python -m pytest src/test_app.py -v
-        working-directory: ./
-      - name: Run Integration Tests
-        run: python -m pytest src/test_integration.py -v
-        working-directory: ./
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-
-      # 2. Log into AWS using the secrets you provided
+      # 1. Log into AWS using the secrets you provided
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -41,15 +27,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      # 3. Install Terraform on the GitHub runner
+      # 2. Install Terraform on the GitHub runner
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      # 4. Initialize Terraform (downloads the AWS provider)
+      # 3. Initialize Terraform (downloads the AWS provider)
       - name: Terraform Init
         run: terraform init
 
-      # 5. Apply the infrastructure.
+      # 4. Apply the infrastructure.
       # -auto-approve skips the "yes" prompt.
       # The 'env' block securely passes your Gemini key so main.tf can use it.
       - name: Terraform Apply
@@ -57,7 +43,7 @@ jobs:
           TF_VAR_gemini_key: ${{ secrets.GEMINI_API_KEY }}
         run: terraform apply -auto-approve
 
-      # 6. Deploy the Frontend
+      # 5. Deploy the Frontend
       - name: Sync S3 and Invalidate CloudFront
         run: |
           # Dynamically grab the exact resource names from Terraform outputs
