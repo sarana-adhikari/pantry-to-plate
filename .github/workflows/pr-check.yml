@@ -22,6 +22,10 @@ jobs:
         run: python -m pip install pytest
       - name: Run Unit Tests
         run: python -m pytest src/test_app.py -v
+      - name: Run Integration Tests (TEMPORARY)
+        run: python -m pytest src/test_integration.py -v
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       - name: Check Python Syntax
         run: python -m py_compile src/app.py
 
