@@ -1,7 +1,7 @@
 ---
 name: Pull Request Checks
 # Only run when a PR is opened against the main branch
-on:
+"on":
   pull_request:
     branches: [main]
 jobs:
